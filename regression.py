@@ -1,6 +1,7 @@
 import numpy as np
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
+from utils import *
 
 r = robjects.r
 
@@ -12,15 +13,14 @@ class Regression:
         
         self.stats = importr('stats')
         self.base = importr('base')
+        self.e1071 = importr('e1071')
 
-        self.data_training_items = [0, round(len(self.data) * 0.8)]
-        self.data_test_items = [round(len(self.data) * 0.8), len(self.data)]
-        
-    def mount_reg_params(self, degree):
+    def make_treatment_data_frame(self, degree):
         kwargs = {}
         model_x = []
-
-        base_price_pos = self.get_item_pos(r['names'](self.data), 'base.price')
+        
+        base_price_pos = get_item_pos(r['names'](self.data), 'base.price')
+        
         kwargs['base.price'] = self.data[base_price_pos]
 
         for i in range(degree):
@@ -31,22 +31,25 @@ class Regression:
                 else:
                     attr_deg = attr + '.' + str(i+1)
                 
-                if r['class'](self.data[cont])[0] != 'factor' or i == 0:
-                    if r['class'](self.data[cont])[0] != 'factor':
+                data_attr = self.data[cont]
+
+                if r['class'](data_attr)[0] != 'factor' or i == 0:
+                    if r['class'](data_attr)[0] != 'factor':
                         model_x.append(attr_deg)
-                        kwargs[attr_deg] = np.power(self.data[cont], (i+1)).tolist()
+                        data_attr = data_attr
+                        kwargs[attr_deg] = np.power(data_attr, (i+1)).tolist()
                     else:
-                        contrasts = r['contrasts'](self.data[cont])
-                        levels = r['levels'](self.data[cont])
-                        c_data = r['as.vector'](self.data[cont]) 
-                        
+                        contrasts = r['contrasts'](data_attr)
+                        levels = r['levels'](data_attr)
+                        data_v = r['as.vector'](data_attr)
+
                         for j in range(1,len(levels)):
                             var_name = attr_deg + '.' + levels[j]
-                            kwargs[var_name] = [None] * len(c_data)
+                            kwargs[var_name] = [None] * len(data_v)
                             model_x.append(var_name)
 
-                        for j in range(0,len(c_data)):
-                            cont_row = self.get_item_pos(levels, c_data[j]) + 1
+                        for j in range(0,len(data_v)):
+                            cont_row = get_item_pos(levels, data_v[j]) + 1
                             for k in range(1,len(levels)):
                                 kwargs[attr_deg + '.' +
                                     levels[k]][j] = contrasts.rx(cont_row, k)[0]
@@ -57,18 +60,29 @@ class Regression:
             if attr != 'base.price':
                 kwargs[attr] = robjects.FloatVector(kwargs[attr])
         
-        return r['data.frame'](**kwargs), ('base.price~' +
-                '+'.join(model_x).replace(' ', '.'))
-    
-    def lm(self, l, h):
-        for i in range(l,h+1):
-            data_frame, data_model = self.mount_reg_params(i)
-            
-            linear_model = self.stats.lm(r['as.formula'](data_model), data = data_frame)
-            print r['summary'](linear_model)[7]
+        data_model = ('base.price~' + '+'.join(model_x).replace(' ', '.'))
+        data_frame = r['data.frame'](**kwargs)
+        
+        data_frame_training = data_frame.rx(r['seq'](0, int(round(len(self.data[0]) * 0.8))), True)
+        data_frame_test = data_frame.rx(r['seq'](int(round(len(self.data[0]) * 0.8)) + 1, len(self.data[0])), True)
 
-    def get_item_pos(self, list, s):
-        for idx, item in enumerate(list):
-            if item == s:
-               return idx
-        return -1
+        return data_frame_training, data_frame_test, data_model
+    
+    def lm(self, degree):
+        data_frame_training, data_frame_test, data_model = self.make_treatment_data_frame(degree)
+        fit = self.stats.lm(r['as.formula'](data_model), data = data_frame_training)
+        
+        pred_prices = r['predict'](fit, data_frame_test, type="response")
+        real_prices = data_frame_test[get_item_pos(data_frame_test.names, 'base.price')]
+        
+        return fit, {'pred_prices': pred_prices, 'real_prices': real_prices}
+
+    def svr(self):
+        data_frame_training, data_frame_test, data_model = self.make_treatment_data_frame(1)
+        
+        kwargs = {'formula': data_model, 'data': data_frame_training,
+                  'scale': True, 'type': 'eps-regression', 'kernel': 'linear',
+                  'degree': 3, 'gamma': 1, 'cost': 1, 'nu': 0.5}
+        fit = self.e1071.svm(**kwargs)
+
+        return fit 
