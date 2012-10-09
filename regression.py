@@ -2,6 +2,8 @@ import numpy as np
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
 from utils import *
+from svm import *
+from svmutil import *
 
 r = robjects.r
 
@@ -80,9 +82,33 @@ class Regression:
     def svr(self):
         data_frame_training, data_frame_test, data_model = self.make_treatment_data_frame(1)
         
+        base_price_pos = get_item_pos(data_frame_training.names, 'base.price')
+        
+        y_data_training = list(data_frame_training[base_price_pos])
+        x_data_training = list(data_frame_training)
+        x_data_training = x_data_training[0:base_price_pos] + x_data_training[base_price_pos+1:len(x_data_training)]
+        x_data_training = [list(item) for item in x_data_training]
+        x_data_training_t = [list(item) for item in np.transpose(x_data_training)]
+        
+        y_data_test = list(data_frame_test[base_price_pos])
+        x_data_test = list(data_frame_test)
+        x_data_test = x_data_test[0:base_price_pos] + x_data_test[base_price_pos+1:len(x_data_test)]
+        x_data_test = [list(item) for item in x_data_test]
+        x_data_test_t = [list(item) for item in np.transpose(x_data_test)]
+
+        prob = svm_problem(y_data_training, x_data_training_t)
+        param = svm_parameter()
+        m = svm_train(prob, param)
+        
+        p_label, p_acc, p_val = svm_predict(y_data_test, x_data_test_t, m)
+        
+        error = np.mean(np.absolute( np.subtract(p_label, y_data_test)  ) / y_data_test)
+
+        '''
         kwargs = {'formula': data_model, 'data': data_frame_training,
                   'scale': True, 'type': 'eps-regression', 'kernel': 'linear',
                   'degree': 3, 'gamma': 1, 'cost': 1, 'nu': 0.5}
         fit = self.e1071.svm(**kwargs)
+        '''
 
-        return fit 
+        return 0
