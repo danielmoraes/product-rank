@@ -6,11 +6,12 @@ r = robjects.r
 
 data_version = '2012-10-05/3/'
 data_file = 'std_offer_specs_1_refined_1_fix.csv'
+working_dir = '/home/daniel/Dropbox/academic/unicamp.cs.msc/project/spider.data/working/' + data_version
 
-r.setwd('/home/daniel/Dropbox/academic/unicamp.cs.msc/project/spider.data/working/' +
-        data_version)
+r.setwd(working_dir)
 
-reg = Regression(r['read.table'](data_file, header = True, sep = ",", stringsAsFactors = True))
+reg = Regression(r['read.table'](data_file, header = True, sep = ",",
+    stringsAsFactors = True), working_dir)
 
 '''
 
