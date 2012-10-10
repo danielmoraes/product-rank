@@ -195,6 +195,8 @@ class Regression:
                             # computing the cross-validation results
                             p_label, p_acc, p_val = svm_predict(y_data_test, scaled_x_data_test_t, m)
                             
+                            import pdb; pdb.set_trace()
+
                             # computing the residual (error) measures
                             relative_errors = [error for error in np.subtract(p_label, y_data_test) / y_data_test]
                             abs_relative_errors = [error for error in np.absolute( np.subtract(p_label, y_data_test)  ) / y_data_test]
@@ -228,7 +230,8 @@ class Regression:
                             # printing the mean results
                             res_file.write('mean rel error: ' + str(mean_relative_error) + '\r\n')
                             res_file.write('mean abs rel error: ' + str(mean_abs_relative_error) + '\r\n')
-                            res_file.write('accuracy: ' + str(p_acc[0]) + ', ' + str(p_acc[1]))
+                            res_file.write('accuracy: ' + str(p_acc[0]) + ', '
+                                    + str(p_acc[1]) + ', ' + str(p_acc[2]))
 
                             gen_res_file.write(str(dir_idx) + '\t' + str(mean_abs_relative_error) + '\r\n')
         res_file.close()
