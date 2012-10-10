@@ -173,7 +173,7 @@ class Regression:
         gen_res_file = open(svm_wd + 'general.results.txt', 'a')
 
         for svm_type in [3]:
-            for kernel_type in [1,2]:
+            for kernel_type in [0,1,2]:
                 for degree in [3]:
                     for gamma in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
                         for cost in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
@@ -195,8 +195,6 @@ class Regression:
                             # computing the cross-validation results
                             p_label, p_acc, p_val = svm_predict(y_data_test, scaled_x_data_test_t, m)
                             
-                            import pdb; pdb.set_trace()
-
                             # computing the residual (error) measures
                             relative_errors = [error for error in np.subtract(p_label, y_data_test) / y_data_test]
                             abs_relative_errors = [error for error in np.absolute( np.subtract(p_label, y_data_test)  ) / y_data_test]
@@ -232,7 +230,11 @@ class Regression:
                             res_file.write('mean abs rel error: ' + str(mean_abs_relative_error) + '\r\n')
                             res_file.write('accuracy: ' + str(p_acc[0]) + ', '
                                     + str(p_acc[1]) + ', ' + str(p_acc[2]))
+                            
+                            svm_params = '(' + ', '.join([str(svm_type),str(kernel_type),str(degree),str(gamma),str(cost)]) + ')'
 
-                            gen_res_file.write(str(dir_idx) + '\t' + str(mean_abs_relative_error) + '\r\n')
+                            gen_res_file.write(str(dir_idx) + '\t' +
+                                    str(mean_abs_relative_error) + '\t' +
+                                    svm_params +  '\r\n')
         res_file.close()
         gen_res_file.close()
