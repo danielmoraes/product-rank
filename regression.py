@@ -133,7 +133,7 @@ class Regression:
         return fit, {'pred_prices': pred_prices, 'real_prices': real_prices}
 
     def svr(self):
-        svm_wd = self.wd + 'svr/'
+        svm_wd = self.wd + 'svr_linear/'
         if not os.path.exists(svm_wd):
             os.makedirs(svm_wd)
         os.chdir(svm_wd)
@@ -171,70 +171,73 @@ class Regression:
         scaled_y_data_test = normalize_data(y_data_test, y_ranges_dict)
         
         gen_res_file = open(svm_wd + 'general.results.txt', 'a')
+        
+        gamma_opt = [pow(2, i) for i in range(-15, 4) if i != 0]
+        cost_opt  = [pow(2, i) for i in range(-5, 16) if i != 0]
 
         for svm_type in [3]:
-            for kernel_type in [0,1,2]:
+            for kernel_type in [2]:
                 for degree in [3]:
-                    for gamma in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
-                        for cost in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
-                            dir_idx += 1
-                            os.mkdir(svm_wd + str(dir_idx) + '/')
-                            os.chdir(svm_wd + str(dir_idx) + '/')
-                            os.mkdir(svm_wd + str(dir_idx) + '/' + 'plots/')
+                    for gamma in gamma_opt:
+                        cost = 1
+                        dir_idx += 1
+                        os.mkdir(svm_wd + str(dir_idx) + '/')
+                        os.chdir(svm_wd + str(dir_idx) + '/')
+                        os.mkdir(svm_wd + str(dir_idx) + '/' + 'plots/')
 
-                            # computing the model
-                            prob = svm_problem(y_data_training, scaled_x_data_training_t)
-                            param = svm_parameter(
-                                    ' -s ' + str(svm_type) + 
-                                    ' -t ' + str(kernel_type) + 
-                                    ' -d ' + str(degree) + 
-                                    ' -g ' + str(gamma) + 
-                                    ' -c ' + str(cost))
-                            m = svm_train(prob, param)
-                            
-                            # computing the cross-validation results
-                            p_label, p_acc, p_val = svm_predict(y_data_test, scaled_x_data_test_t, m)
-                            
-                            # computing the residual (error) measures
-                            relative_errors = [error for error in np.subtract(p_label, y_data_test) / y_data_test]
-                            abs_relative_errors = [error for error in np.absolute( np.subtract(p_label, y_data_test)  ) / y_data_test]
+                        # computing the model
+                        prob = svm_problem(y_data_training, scaled_x_data_training_t)
+                        param = svm_parameter(
+                                ' -s ' + str(svm_type) + 
+                                ' -t ' + str(kernel_type) + 
+                                ' -d ' + str(degree) + 
+                                ' -g ' + str(gamma) + 
+                                ' -c ' + str(cost))
+                        m = svm_train(prob, param)
+                        
+                        # computing the cross-validation results
+                        p_label, p_acc, p_val = svm_predict(y_data_test, scaled_x_data_test_t, m)
+                        
+                        # computing the residual (error) measures
+                        relative_errors = [error for error in np.subtract(p_label, y_data_test) / y_data_test]
+                        abs_relative_errors = [error for error in np.absolute( np.subtract(p_label, y_data_test)  ) / y_data_test]
 
-                            mean_relative_error = np.mean( relative_errors )
-                            mean_abs_relative_error = np.mean( abs_relative_errors )
-                            
-                            # making histograms of the residuals
-                            hist, bins = np.histogram(relative_errors, bins = 50)
-                            width = 0.7 * (bins[1] - bins[0])
-                            center = (bins[:-1] + bins[1:])/2
-                            plt.bar(center, hist, align = 'center', width = width)
-                            plt.savefig('plots/rel_error_hist_plot.png')
-                            plt.clf()
-                            
-                            hist, bins = np.histogram(abs_relative_errors, bins = 50)
-                            width = 0.7 * (bins[1] - bins[0])
-                            center = (bins[:-1] + bins[1:])/2
-                            plt.bar(center, hist, align = 'center', width = width)
-                            plt.savefig('plots/abs_rel_error_hist_plot.png')
-                            plt.clf()
+                        mean_relative_error = np.mean( relative_errors )
+                        mean_abs_relative_error = np.mean( abs_relative_errors )
+                        
+                        # making histograms of the residuals
+                        hist, bins = np.histogram(relative_errors, bins = 50)
+                        width = 0.7 * (bins[1] - bins[0])
+                        center = (bins[:-1] + bins[1:])/2
+                        plt.bar(center, hist, align = 'center', width = width)
+                        plt.savefig('plots/rel_error_hist_plot.png')
+                        plt.clf()
+                        
+                        hist, bins = np.histogram(abs_relative_errors, bins = 50)
+                        width = 0.7 * (bins[1] - bins[0])
+                        center = (bins[:-1] + bins[1:])/2
+                        plt.bar(center, hist, align = 'center', width = width)
+                        plt.savefig('plots/abs_rel_error_hist_plot.png')
+                        plt.clf()
 
-                            res_file = open(svm_wd + str(dir_idx) + '/' + 'results.txt', 'w')
-                            
-                            res_file.write('svm_type: ' + str(svm_type) + ', ' +
-                                           'kernel_type: ' + str(kernel_type) + ', ' +
-                                           'degree: ' + str(degree) + ', ' +
-                                           'gamma: ' + str(gamma) + ', ' + 
-                                           'cost: ' + str(cost) + '\r\n\r\n')
+                        res_file = open(svm_wd + str(dir_idx) + '/' + 'results.txt', 'w')
+                        
+                        res_file.write('svm_type: ' + str(svm_type) + ', ' +
+                                       'kernel_type: ' + str(kernel_type) + ', ' +
+                                       'degree: ' + str(degree) + ', ' +
+                                       'gamma: ' + str(gamma) + ', ' + 
+                                       'cost: ' + str(cost) + '\r\n\r\n')
 
-                            # printing the mean results
-                            res_file.write('mean rel error: ' + str(mean_relative_error) + '\r\n')
-                            res_file.write('mean abs rel error: ' + str(mean_abs_relative_error) + '\r\n')
-                            res_file.write('accuracy: ' + str(p_acc[0]) + ', '
-                                    + str(p_acc[1]) + ', ' + str(p_acc[2]))
-                            
-                            svm_params = '(' + ', '.join([str(svm_type),str(kernel_type),str(degree),str(gamma),str(cost)]) + ')'
+                        # printing the mean results
+                        res_file.write('mean rel error: ' + str(mean_relative_error) + '\r\n')
+                        res_file.write('mean abs rel error: ' + str(mean_abs_relative_error) + '\r\n')
+                        res_file.write('accuracy: ' + str(p_acc[0]) + ', '
+                                + str(p_acc[1]) + ', ' + str(p_acc[2]))
+                        
+                        svm_params = '(' + ', '.join([str(svm_type),str(kernel_type),str(degree),str(gamma),str(cost)]) + ')'
 
-                            gen_res_file.write(str(dir_idx) + '\t' +
-                                    str(mean_abs_relative_error) + '\t' +
-                                    svm_params +  '\r\n')
+                        gen_res_file.write(str(dir_idx) + '\t' +
+                                str(mean_abs_relative_error) + '\t' +
+                                svm_params +  '\r\n')
         res_file.close()
         gen_res_file.close()
