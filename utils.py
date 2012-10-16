@@ -70,8 +70,11 @@ def normalize_data(data, ranges = None) :
                 column[j] = lower
             elif column[j] == maximum:
                 column[j] = upper
-            else :
-                column[j] = lower + (upper-lower) * (column[j] - minimum) / (maximum - minimum)
+            else:
+                if maximum - minimum != 0:
+                    column[j] = lower + (upper-lower) * (column[j] - minimum) / (maximum - minimum)
+                else:
+                    column[j] = 0
 
         # Copying normalized values in memory
         for elem, item in zip(column, normalized_data):
