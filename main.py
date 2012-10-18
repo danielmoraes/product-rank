@@ -1,4 +1,4 @@
-from regression_cross import *
+from price_prediction import *
 import rpy2.robjects as robjects
 import numpy as np
 
@@ -53,6 +53,11 @@ def run_lm(reg):
 def run_svr(reg):
     # support vector regression
     reg.svr()
+
+def run_ga(reg):
+    # genetic algorithm
+
+    reg.genetic(1)
 
 # Regression instance
 reg = Regression(r['read.table'](data_file, header = True, sep = ",",

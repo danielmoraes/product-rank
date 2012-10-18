@@ -7,6 +7,7 @@ from svmutil import *
 import matplotlib.pyplot as plt
 import Image
 import math
+from pyevolve import *
 
 r = robjects.r
 
@@ -117,9 +118,9 @@ class Regression:
         subset_nrows = math.ceil(total_nrows/float(k))
         last_subset_nrows = total_nrows - subset_nrows * (k-1)
         
-        c_start_row = 0
+        c_start_row = -1
         for i in range(k-1):
-            subsets.append(data_frame.rx(r['seq'](c_start_row, 
+            subsets.append(data_frame.rx(r['seq'](c_start_row + 1, 
                 c_start_row + subset_nrows), True))
             c_start_row += subset_nrows
 
@@ -127,6 +128,57 @@ class Regression:
             c_start_row + last_subset_nrows), True))
 
         return subsets
+    
+    def genetic(self, degree):
+        y_label = 'base.price'
+        dc_dataframe = self.apply_dummy_coding(self.data, 'treatment', degree)
+        n_coefs = len(dc_dataframe) - 1
+
+        baseprice_pos = get_item_pos(dc_dataframe.names, 'base.price')
+        y_dataset = list(dc_dataframe[baseprice_pos])
+        x_dataset = list(dc_dataframe)
+        del x_dataset[baseprice_pos]
+        x_dataset = [list(item) for item in x_dataset]
+        x_dataset = [list(item) for item in np.transpose(x_dataset)]
+        
+        genome = G1DList.G1DList(n_coefs)
+        genome.evaluator.set(self.ga_eval_func)
+        genome.setParams(rangemin=0, rangemax=100, yds=y_dataset, xds=x_dataset)
+        genome.mutator.set(Mutators.G1DListMutatorRealGaussian)
+
+        ga = GSimpleGA.GSimpleGA(genome)
+        ga.setMinimax(Consts.minimaxType["minimize"])
+        ga.setPopulationSize(500)
+        ga.setGenerations(1000)
+        #ga.setInteractiveGeneration(5)
+
+        ga.evolve(freq_stats=1)
+        
+        best = ga.bestIndividual()
+        print best
+        print "Best individual score: %.2f" % best.getRawScore()
+
+    def ga_eval_func(self, chromosome):
+        y_dataset = chromosome.internalParams["yds"]
+        x_dataset = chromosome.internalParams["xds"]
+        
+        sq_abs_rel_errors = [None] * len(x_dataset)
+        for item_idx in range(len(x_dataset)):
+            pred_price = 0.0000000001
+            attr_idx = 0
+            for value in chromosome:
+                pred_price += value * x_dataset[item_idx][attr_idx]
+                attr_idx += 1
+
+            abs_error = np.absolute(pred_price - y_dataset[item_idx])
+            abs_rel_error = abs_error / y_dataset[item_idx]
+            sq_abs_rel_error = np.power(abs_rel_error, 2)
+
+            sq_abs_rel_errors[item_idx] = sq_abs_rel_error
+        
+        mean_sq_abs_rel_error = np.mean(sq_abs_rel_errors)
+        
+        return mean_sq_abs_rel_error
 
     def lm(self, degree):
         y_label = 'base.price'
@@ -137,9 +189,6 @@ class Regression:
         dc_data_model = (y_label + '~' + '+'.join(x_labels).replace(' ', '.'))
         
         dc_df_subsets = self.apply_kfold(dc_data_frame, 10)
-        
-        #data_frame_training, data_frame_test, data_model = 
-        #    self.make_regression_data_frame(degree)
         
         cross_results = []
         for i in range(10):
@@ -166,7 +215,7 @@ class Regression:
         return fit, cross_results
 
     def svr(self):
-        svm_wd = self.wd + 'svr/'
+        svm_wd = self.wd + 'svr_4/'
         if not os.path.exists(svm_wd):
             os.makedirs(svm_wd)
         os.chdir(svm_wd)
@@ -223,16 +272,17 @@ class Regression:
             cross_datasets.append({'training.x': scaled_x_data_training,
                                    'training.y': y_data_training,
                                    'test.x': scaled_x_data_test,
-                                   'test.y': y_data_test})
+                                   'test.y': y_data_test,
+                                   'dataset': dc_data_frame})
 
         gen_res_file = open(svm_wd + 'general.results.txt', 'a')
 
         gamma_opt = [pow(2, i) for i in range(-15, 4) if i != 0]
         cost_opt  = [pow(2, i) for i in range(-5, 16) if i != 0]
 
-        for svm_type in [3]:
+        for svm_type in [4]:
             for kernel_type in [2]:
-                for degree in [3]:
+                for degree in [2,3,4]:
                     for gamma in gamma_opt:
                         for cost in cost_opt:
                             dir_idx += 1
@@ -287,6 +337,12 @@ class Regression:
                             global_mean_rel_error = np.mean(global_rel_errors)
                             global_mean_abs_rel_error =\
                                 np.mean(global_abs_rel_errors)
+                            
+                            # exporting laptops csv with prediction error results
+                            r['write.csv'](ds['dataset'], file='ds.csv')
+                            r['write.csv'](r['data.frame'](global_abs_rel_errors), file='errors.csv')
+                            r['write.csv'](r['data.frame'](global_rel_errors),
+                                    file='errors.csv')
 
                             # making histograms of the residuals
                             hist, bins = np.histogram(global_rel_errors, bins = 50)
@@ -329,7 +385,8 @@ class Regression:
                                     str(global_mean_abs_rel_error) + '\t' +\
                                     svm_params +  '\r\n')
                             
-                            os.fsync(gen_res_file)
+                            gen_res_file.flush()
+                            os.fsync(gen_res_file.fileno())
 
                             res_file.close()
         gen_res_file.close()
