@@ -12,6 +12,7 @@ import Image
 import math
 import os
 from pyevolve import *
+import csv
 
 r = robjects.r
 
@@ -19,7 +20,9 @@ class Regression:
     "Regression"
 
     def __init__(self, data, wdir):
+        # stores the datasets
         self.data = data
+        self.y_label = 'base.price'
 
         # rpy2 imports
         self.stats = importr('stats')
@@ -27,15 +30,12 @@ class Regression:
         self.e1071 = importr('e1071')
 
         # setting the directory that the result files will be written
-        self.wd = wdir
-        self.wd += 'results/'
-        if not os.path.exists(self.wd):
-            os.makedirs(self.wd)
+        self.wd = wdir + 'results/'
+        if not os.path.exists(self.wd): os.makedirs(self.wd)
         os.chdir(self.wd)
 
-    def apply_dummy_coding(self, data_frame, dc_type, degree = 1):
-        y_label = 'base.price'
-        
+    def apply_dummy_coding(self, data_frame, y_label, dc_type, degree = 1):
+        """return a dummy coded r data frame"""
         base_price_pos = get_item_pos(r['names'](data_frame), y_label)
         
         kwargs = {}
@@ -117,9 +117,10 @@ class Regression:
         return dc_data_frame
 
     def apply_2fold(self, data_frame, val_ids):
+        """return validation and training sets in array format"""
         cid_product_pos = get_item_pos(r['names'](data_frame), 'cid.product')
         all_cids = [item.replace('"', '') for item in
-                list(r['as.vector'](data_frame[12]))]
+                list(r['as.vector'](data_frame[cid_product_pos]))]
         train_pos = [0 if cid in val_ids else 1 for cid in all_cids]
 
         training_rows = [i for i in range(len(all_cids))
@@ -133,6 +134,7 @@ class Regression:
         return [validation_set, training_set]
 
     def apply_kfold(self, data_frame, k):
+        """return the k subsets in array format"""
         subsets = []
         
         total_nrows = len(self.data[0])
@@ -150,8 +152,8 @@ class Regression:
 
         return subsets
 
-    def normalize_dataset(self, validation_set, training_set, y_label):
-        
+    def normalize_dataset(self, validation_set, training_set, ylabel):
+        """return the normalized validation (x,y) and training (x,y) sets"""
         # mounting the data in the libsvm format
         base_price_pos = get_item_pos(training_set.names, y_label)
 
@@ -171,7 +173,6 @@ class Regression:
         scaled_x_data_training, x_ranges_dict =\
                 normalize_data(x_data_training)
         scaled_x_data_test = normalize_data(x_data_test, x_ranges_dict)
-
 
         return [y_data_training, scaled_x_data_training, 
                 y_data_test, scaled_x_data_test]
@@ -432,11 +433,20 @@ class Regression:
                             global_mean_rel_error = np.mean(global_rel_errors)
                             global_mean_abs_rel_error =\
                                 np.mean(global_abs_rel_errors)
+                        
+                            import pdb; pdb.set_trace()
                             
-                            # exporting laptops csv with prediction error results
+                            detail_res_file = csv.writer(open("detail_res_file.csv", "wb"))
+                            
+                            detail_res_file.writerow(["cid-product",\
+                                "real-price", "predicted-price",\
+                                "abs-rel-error", "rel-error"])
+                            
+                            
+
                             r['write.csv'](ds['dataset'], file='ds.csv')
-                            r['write.csv'](r['data.frame'](global_abs_rel_errors), file='errors.csv')
-                            r['write.csv'](r['data.frame'](global_rel_errors), file='errors.csv')
+                            #r['write.csv'](r['data.frame'](global_abs_rel_errors), file='errors.csv')
+                            #r['write.csv'](r['data.frame'](global_rel_errors), file='errors.csv')
                             
                             # making histograms of the residuals
                             hist, bins = np.histogram(global_rel_errors, bins = 50)
