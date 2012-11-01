@@ -1,0 +1,12 @@
+# cid-product position
+cid_product_pos = get_item_pos(r['names'](data_frame), 'cid.product')
+
+####################################################################################################
+
+# all cids
+all_cids = [item.replace('"', '') for item in list(r['as.vector'](data_frame[12]))]
+
+####################################################################################################
+
+# train pos
+train_pos = [0 if cid in val_ids else 1 for cid in all_cids]
