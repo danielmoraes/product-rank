@@ -34,12 +34,14 @@ import csv
 class PricePrediction:
     "PricePrediction"
 
-    def __init__(self, data, wdir):
+    def __init__(self, data, wdir, val_ids):
         """ Class constructor """
         # stores the dataset and the dataset ids
         self.data, self.data_ids = self.catch_dataset_ids(data, 
                 'cid.product')
         
+        self.data_val_ids = val_ids
+
         # stores the y label that will be predicted
         self.y_label = 'base.price'
 
@@ -153,9 +155,9 @@ class PricePrediction:
         
         train_pos = [0 if cid in val_ids else 1 for cid in self.data_ids]
 
-        training_rows = [i for i in range(len(self.data_ids))
+        training_rows = [i+1 for i in range(len(self.data_ids))
                 if train_pos[i] == 1]
-        validation_rows = [i for i in range(len(self.data_ids))
+        validation_rows = [i+1 for i in range(len(self.data_ids))
                 if train_pos[i] == 0]
         
         training_set = data_frame.rx(robjects.IntVector(training_rows), True)
@@ -314,62 +316,11 @@ class PricePrediction:
         # applying dummy coding scheme to the dataset
         dc_data_frame = self.apply_dummy_coding(self.data, self.y_label, 'svr')
         
-        val_ids = ["7320762352381137486", "1326601974741727223",
-                "13795479952677497758", "17970471663419943956",
-                "591996572399293829", "6954492747098322828",
-                "4519400601461371159", "11454960459781727628",
-                "9768395304785573367", "7906825960605741597",
-                "3905643410280481454", "12454419868848728357",
-                "13486961177026390118", "18187469172894655333",
-                "15676465151754481270", "4488190483628909777",
-                "5667355130474897285", "964258365948286848",
-                "17818785705188559565", "13640541194109558825",
-                "16881539705098457661", "10198992337604092255",
-                "16133277327554207772", "17027936431095655851",
-                "4006556787408523793", "17828380218855946271",
-                "17795348434156827663", "9819797841580929529",
-                "7622575789119914178", "10836067036626445968",
-                "10840594361218801501", "6849908377245687254",
-                "15832460680890497046", "9815281397449858316",
-                "13009415889885870525", "17193588718582764562",
-                "11644173636197049081", "17003039771047908208",
-                "14351366332599145086", "8194206286320205104",
-                "5692045396867215843", "16062413441531954747",
-                "13065498101602502269", "15630495468350842421",
-                "2400915835830124098", "11530282848970745391",
-                "1115770551400009487", "4526062704021156700",
-                "15956991559213678896", "3357274925576012669",
-                "2033255983674970214", "12658661573620019110",
-                "6255741892431163040", "8288152357428885260",
-                "13340114743452940308", "8314969399756073668",
-                "5238296034497477044", "3636511060856514098",
-                "6364219505840161130", "3798501454412744418",
-                "777415161209995588", "8667841844491088304",
-                "229831732984625798", "13650586586314627826",
-                "17891827491669968268", "2260755193876131907",
-                "121393340552408620", "787711980568006406",
-                "10042042071473919540", "10115557741499455579",
-                "11540055609545135557", "8781566056153779038",
-                "15514096673674662274", "3639847870770156967",
-                "4230688520128215935", "4951696076046304705",
-                "18259807734269833476", "6349231821864840119",
-                "16960399523252868813", "11544889873844603832",
-                "16296489504445822662", "9771940656370572981",
-                "11197160959360408895", "16339705762773060111",
-                "14887574878643139909", "2812302064763831962",
-                "8023409695905298613", "3885712002505993349",
-                "4492264831939922519", "1556139017108071009",
-                "13077806425412745049", "15700956778227868322",
-                "1269077004618136411", "13999952642140301421",
-                "11075953045429478446", "13578758997251769242",
-                "5864663906864527368", "4201105441247825184",
-                "14667683723488806969", "10660778921539065951"]
-        
         cross_datasets = []
         
         # cross and normalize the dataset
         if crossType == '2fold':
-            dc_df_subsets = self.apply_2fold(dc_data_frame, val_ids)
+            dc_df_subsets = self.apply_2fold(dc_data_frame, self.data_val_ids)
             
             normalized_ds = self.normalize_dataset(dc_df_subsets[0],
                     dc_df_subsets[1], self.y_label)
@@ -449,14 +400,22 @@ class PricePrediction:
                                 mean_abs_rel_error = np.mean( abs_rel_errors )
 
                                 c_cross_results.append({
+                                    'real_prices': ds['test.y'],
+                                    'pred_prices': p_label,
                                     'rel_errors': rel_errors,
                                     'abs_rel_errors': abs_rel_errors,
                                     'mean_rel_error': mean_rel_error,
                                     'mean_abs_rel_error': mean_abs_rel_error})
                             
+                            global_real_prices = []
+                            global_pred_prices = []
                             global_rel_errors = []
                             global_abs_rel_errors = []
                             for ds_idx in range(len(cross_datasets)):
+                                global_real_prices +=\
+                                    c_cross_results[ds_idx]['real_prices']
+                                global_pred_prices +=\
+                                    c_cross_results[ds_idx]['pred_prices']
                                 global_rel_errors +=\
                                     c_cross_results[ds_idx]['rel_errors']
                                 global_abs_rel_errors +=\
@@ -466,17 +425,18 @@ class PricePrediction:
                             global_mean_abs_rel_error =\
                                 np.mean(global_abs_rel_errors)
                         
-                            #import pdb; pdb.set_trace()
+                            detail_res_file = csv.writer(open("detail_res_file.csv", "wb"))
                             
-                            #detail_res_file = csv.writer(open("detail_res_file.csv", "wb"))
-                            
-                            #detail_res_file.writerow(["cid-product",\
-                                    #    "real-price", "predicted-price",\
-                                    #    "abs-rel-error", "rel-error"])
-                            
+                            detail_res_file.writerow(["cid-product",\
+                                "real-price", "predicted-price",\
+                                "abs-rel-error", "rel-error"])
+                           
+                            for i in range(len(global_real_prices)):
+                                detail_res_file.writerow([self.data_val_ids[i], 
+                                    global_real_prices[i], int(global_pred_prices[i]),
+                                    global_abs_rel_errors[i], global_rel_errors[i]])
+
                             r['write.csv'](ds['dataset'], file='ds.csv')
-                            #r['write.csv'](r['data.frame'](global_abs_rel_errors), file='errors.csv')
-                            #r['write.csv'](r['data.frame'](global_rel_errors), file='errors.csv')
                             
                             # making histograms of the residuals
                             hist, bins = np.histogram(global_rel_errors, bins = 50)
