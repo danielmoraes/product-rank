@@ -1,27 +1,46 @@
+# to make plots
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
-import numpy as np
+# python to R interface
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
-from utils import *
-from libsvm2_svm import *
-from libsvm2_svmutil import *
-import matplotlib.pyplot as plt
-import Image
-import math
-import os
-from pyevolve import *
-import csv
 
+# numpy lib
+import numpy as np
 r = robjects.r
 
-class Regression:
-    "Regression"
+# python to libsvm interface
+from lib.libsvm2_svm import *
+from lib.libsvm2_svmutil import *
+
+# utils
+from utils import *
+
+# to export images
+import Image
+
+# python libs
+import math
+import os
+
+# pyevolve lib
+from pyevolve import *
+
+# to export csv
+import csv
+
+class PricePrediction:
+    "PricePrediction"
 
     def __init__(self, data, wdir):
-        # stores the datasets
-        self.data = data
+        """ Class constructor """
+        # stores the dataset and the dataset ids
+        self.data, self.data_ids = self.catch_dataset_ids(data, 
+                'cid.product')
+        
+        # stores the y label that will be predicted
         self.y_label = 'base.price'
 
         # rpy2 imports
@@ -34,8 +53,21 @@ class Regression:
         if not os.path.exists(self.wd): os.makedirs(self.wd)
         os.chdir(self.wd)
 
+    def catch_dataset_ids(self, data_frame, id_label):
+        id_pos = get_item_pos(r['names'](data_frame), id_label)
+        ids_idx = [item.replace('"', '') for item in
+                list(r['as.vector'](data_frame[id_pos]))]
+        
+        keep = [item for item in list(r['names'](data_frame)) 
+                if item != id_label]
+        keep = robjects.StrVector(keep)
+        data_frame_x = data_frame.rx(True, keep)
+
+        return [data_frame_x, ids_idx]
+
     def apply_dummy_coding(self, data_frame, y_label, dc_type, degree = 1):
-        """return a dummy coded r data frame"""
+        """ Return a dummy coded R data frame """
+
         base_price_pos = get_item_pos(r['names'](data_frame), y_label)
         
         kwargs = {}
@@ -117,15 +149,13 @@ class Regression:
         return dc_data_frame
 
     def apply_2fold(self, data_frame, val_ids):
-        """return validation and training sets in array format"""
-        cid_product_pos = get_item_pos(r['names'](data_frame), 'cid.product')
-        all_cids = [item.replace('"', '') for item in
-                list(r['as.vector'](data_frame[cid_product_pos]))]
-        train_pos = [0 if cid in val_ids else 1 for cid in all_cids]
+        """ Return an array with the val/train dataframe sets """
+        
+        train_pos = [0 if cid in val_ids else 1 for cid in self.data_ids]
 
-        training_rows = [i for i in range(len(all_cids))
+        training_rows = [i for i in range(len(self.data_ids))
                 if train_pos[i] == 1]
-        validation_rows = [i for i in range(len(all_cids))
+        validation_rows = [i for i in range(len(self.data_ids))
                 if train_pos[i] == 0]
         
         training_set = data_frame.rx(robjects.IntVector(training_rows), True)
@@ -134,7 +164,7 @@ class Regression:
         return [validation_set, training_set]
 
     def apply_kfold(self, data_frame, k):
-        """return the k subsets in array format"""
+        """ Return an array with the k dataframe subsets"""
         subsets = []
         
         total_nrows = len(self.data[0])
@@ -152,10 +182,10 @@ class Regression:
 
         return subsets
 
-    def normalize_dataset(self, validation_set, training_set, ylabel):
-        """return the normalized validation (x,y) and training (x,y) sets"""
+    def normalize_dataset(self, validation_set, training_set, y_label):
+        """ Return the norm val x, val y, norm train x, train y datasets"""
         # mounting the data in the libsvm format
-        base_price_pos = get_item_pos(training_set.names, y_label)
+        base_price_pos = get_item_pos(training_set.names, self.y_label)
 
         y_data_training = list(training_set[base_price_pos])
         x_data_training = list(training_set)
@@ -178,6 +208,7 @@ class Regression:
                 y_data_test, scaled_x_data_test]
 
     def genetic(self, degree):
+        """ Apply the genetic algorithm with the dummy coded self.data """
         y_label = 'base.price'
         dc_dataframe = self.apply_dummy_coding(self.data, 'treatment', degree)
         n_coefs = len(dc_dataframe) - 1
@@ -207,6 +238,7 @@ class Regression:
         print "Best individual score: %.2f" % best.getRawScore()
 
     def ga_eval_func(self, chromosome):
+        """ Genetic algorithm evaluation function """
         y_dataset = chromosome.internalParams["yds"]
         x_dataset = chromosome.internalParams["xds"]
         
@@ -229,12 +261,13 @@ class Regression:
         return mean_sq_abs_rel_error
     
     def lm(self, degree):
-        y_label = 'base.price'
-        dc_data_frame = self.apply_dummy_coding(self.data, 'treatment', degree)
+        """ Apply the poly regression to the dummy coded self.data with degree """
+        
+        dc_data_frame = self.apply_dummy_coding(self.data, self.y_label, 'treatment', degree)
         
         x_labels = list(r['names'](dc_data_frame))
-        del x_labels[get_item_pos(x_labels, y_label)]
-        dc_data_model = (y_label + '~' + '+'.join(x_labels).replace(' ', '.'))
+        del x_labels[get_item_pos(x_labels, self.y_label)]
+        dc_data_model = (self.y_label + '~' + '+'.join(x_labels).replace(' ', '.'))
         
         dc_df_subsets = self.apply_kfold(dc_data_frame, 10)
         
@@ -250,37 +283,36 @@ class Regression:
                                       training_subsets[4], training_subsets[5],
                                       training_subsets[6], training_subsets[7],
                                       training_subsets[8])
-        
+            
             fit = self.stats.lm(r['as.formula'](dc_data_model), 
                 data = training_set)
             pred_prices = r['predict'](fit, validation_set, type="response")
 
             real_prices = validation_set[get_item_pos(validation_set.names, 
-                y_label)]
-            cross_results.append({'pred_prices': pred_prices, 
-                'real_prices': real_prices})
-
+                self.y_label)]
+            
+            cross_results.append({'pred_prices': list(pred_prices), 
+                'real_prices': list(real_prices)})
+        
         return fit, cross_results
 
-    def svr(self, cross_type):
-        svm_wd = self.wd + 'svr_hr/'
+    def svr(self, resDirName, crossType):
+        """ Apply the support vector regression to the dummy coded self.data """
+        
+        # setting the directory that the results will be written
+        svm_wd = self.wd + resDirName + '/'
         if not os.path.exists(svm_wd):
            os.makedirs(svm_wd)
         os.chdir(svm_wd)
 
+        # setting the new dir_idx to be the larger dir_idx+1
         dir_files = [int(item.split('.')[0]) for item in os.listdir(svm_wd) 
                      if item.split('.')[0] != 'general']
+        if len(dir_files) == 0: dir_idx = 0
+        else: dir_idx = max(dir_files)
         
-        if len(dir_files) == 0:
-            dir_idx = 0
-        else:
-            dir_idx = max(dir_files)
-        
-        y_label = 'base.price'
-        
-        # applying the coding scheme to the data
-        #data_frame_training, data_frame_test = self.make_svr_data_frame()
-        dc_data_frame = self.apply_dummy_coding(self.data, 'svr')
+        # applying dummy coding scheme to the dataset
+        dc_data_frame = self.apply_dummy_coding(self.data, self.y_label, 'svr')
         
         val_ids = ["7320762352381137486", "1326601974741727223",
                 "13795479952677497758", "17970471663419943956",
@@ -335,18 +367,18 @@ class Regression:
         
         cross_datasets = []
         
-        if cross_type == '2fold':
+        # cross and normalize the dataset
+        if crossType == '2fold':
             dc_df_subsets = self.apply_2fold(dc_data_frame, val_ids)
             
             normalized_ds = self.normalize_dataset(dc_df_subsets[0],
-                    dc_df_subsets[1], y_label)
+                    dc_df_subsets[1], self.y_label)
 
             cross_datasets.append({'training.x': normalized_ds[1],
                                    'training.y': normalized_ds[0],
                                    'test.x': normalized_ds[3],
                                    'test.y': normalized_ds[2],
                                    'dataset': dc_data_frame})
-            
         else:
             dc_df_subsets = self.apply_kfold(dc_data_frame, 10)
 
@@ -363,7 +395,7 @@ class Regression:
                                           training_subsets[8])
 
                 normalized_ds = self.normalize_dataset(validation_set, 
-                        training_seti, y_label)
+                        training_seti, self.y_label)
 
                 cross_datasets.append({'training.x': normalized_ds[1],
                                        'training.y': normalized_ds[0],
@@ -434,16 +466,14 @@ class Regression:
                             global_mean_abs_rel_error =\
                                 np.mean(global_abs_rel_errors)
                         
-                            import pdb; pdb.set_trace()
+                            #import pdb; pdb.set_trace()
                             
-                            detail_res_file = csv.writer(open("detail_res_file.csv", "wb"))
+                            #detail_res_file = csv.writer(open("detail_res_file.csv", "wb"))
                             
-                            detail_res_file.writerow(["cid-product",\
-                                "real-price", "predicted-price",\
-                                "abs-rel-error", "rel-error"])
+                            #detail_res_file.writerow(["cid-product",\
+                                    #    "real-price", "predicted-price",\
+                                    #    "abs-rel-error", "rel-error"])
                             
-                            
-
                             r['write.csv'](ds['dataset'], file='ds.csv')
                             #r['write.csv'](r['data.frame'](global_abs_rel_errors), file='errors.csv')
                             #r['write.csv'](r['data.frame'](global_rel_errors), file='errors.csv')
@@ -479,9 +509,10 @@ class Regression:
                             res_file.write('mean abs rel error: ' +\
                                     str(global_mean_abs_rel_error) + '\r\n')
                             res_file.write('accuracy: ' + str(p_acc[0]) + ', '\
-                                    + str(p_acc[1]) + ', ' + str(p_acc[2]))
+                                    + str(p_acc[1]) + ', ' + str(p_acc[2]) +
+                                    '\r\n')
                             
-                            if cross_type != '2fold':
+                            if crossType != '2fold':
                                 for i in range(10):
                                     res_file.write('\r\n')
                                     res_file.write(str(c_cross_results[i]['mean_rel_error']))
@@ -501,5 +532,4 @@ class Regression:
 
                             res_file.close()
         gen_res_file.close()
-
 
